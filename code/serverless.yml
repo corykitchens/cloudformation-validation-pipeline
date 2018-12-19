@@ -8,6 +8,9 @@ provider:
   name: aws
   runtime: python3.6
   region: us-west-2
+  stackName: CfValidationPipeline
+  stage: 'production'
+  
 
 # you can add statements to the Lambda function's IAM Role here
 #  iamRoleStatements:
@@ -31,6 +34,9 @@ functions:
     role: LintTemplateRole
   validate_template:
     handler: validate_template/validate_template.lambda_handler
+    role: ValidateTemplateRole
+  required_tags:
+    handler: required_tags/tags.lambda_handler
     role: ValidateTemplateRole
 
 #    The following are a few example events you can configure
@@ -101,7 +107,7 @@ resources:
               - logs:CreateLogStream
               - logs:PutLogEvents
               Resource:
-              - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Fn::Sub: "*"
             - Effect: Allow
               Action:
               - codepipeline:GetPipeline
@@ -109,7 +115,7 @@ resources:
               - codepipeline:GetPipelineState
               - codepipeline:ListPipelines
               Resource:
-              - Fn::Sub: arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:*
+              - Fn::Sub: "*"
             - Effect: Allow
               Action:
               - codepipeline:GetJobDetails
