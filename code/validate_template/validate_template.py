@@ -1,7 +1,13 @@
-from awsclients import AwsClients
-from botocore.exceptions import ClientError
-from cfnpipeline import CFNPipeline
-from logger import Logger
+import os
+import json
+import boto3
+import io
+import zipfile
+import time
+from lib.awsclients import AwsClients
+from lib.cfnpipeline import CFNPipeline
+from lib.logger import Logger
+import cfnlint.core
 
 
 loglevel = 'debug'
@@ -11,26 +17,29 @@ clients = AwsClients(logger)
 pipeline_run = CFNPipeline(logger, clients)
 
 
-def get_templates(configs):
+def get_templates(bucket_name, obj_key):
     templates = []
-    for artifact in configs.keys():
-            for config in configs[artifact]:
-                for test in config['tests'].keys():
-                    t = [artifact, config['tests'][test]['template_file']]
-                    if t not in templates:
-                        templates.append(t)
-    logger.debug(templates)
+    s3 = boto3.client('s3')
+    obj = s3.get_object(Bucket=bucket_name, Key=obj_key)
+    data = obj.get("Body").read()
+    with io.BytesIO(data) as tf:
+        #rewind the file
+        # Read the file as a zipfile and process the members
+        with zipfile.ZipFile(tf, mode='r') as zipf:
+            for subfile in zipf.namelist():
+                if '.yaml' in subfile:
+                    template = zipf.read(subfile).decode("utf-8")
+                    templates.append([subfile, template])
     return templates
 
 
-def validate_template(artifact, template_name):
-    url = pipeline_run.upload_template(artifact, template_name, pipeline_run.user_params["ScratchBucket"],
-                                       pipeline_run.region)
-    cfn_client = clients.get('cloudformation')
+def validate_template(name, template):
     try:
-        cfn_client.validate_template(TemplateURL=url)
-    except ClientError as e:
-        return e.message
+        cf_client = boto3.client('cloudformation')
+        res = cf_client.validate_template(TemplateBody=template)
+    except Exception as e:
+        return [e]
+    return None
 
 
 def lambda_handler(event, context):
@@ -42,19 +51,30 @@ def lambda_handler(event, context):
         logger.info({'event': 'new_invoke'})
         errors = []
         successes = []
-        for a, t in get_templates(pipeline_run.ci_configs):
-            validation_failed = validate_template(a, t)
-            if validation_failed:
-                errors.append([a, t, validation_failed])
-            else:
-                successes.append('%s/%s' % (a, t))
-        if len(errors) > 0:
-            msg = "%s validation failures %s" % (len(errors), errors)
-            pipeline_run.put_job_failure(msg)
-            logger.error(msg)
+        input_artifacts = event['CodePipeline.job']['data']['inputArtifacts']
+        if len(input_artifacts):
+            location = input_artifacts[0]['location']
+            if location['type'] == 'S3':
+                bucket_name = location['s3Location']['bucketName']
+                obj_key = location['s3Location']['objectKey']
+                for name, template in get_templates(bucket_name, obj_key):
+                    validate_failed = validate_template(name, template)
+                    if validate_failed:
+                      errors.append([name, template, validate_failed])
+                    else:
+                      successes.append('%s/%s' % (template, name))
+                if len(errors) > 0:
+                    msg = "%s lint failures %s" % (len(errors), errors)
+                    print(msg)
+                    pipeline_run.put_job_failure(msg)
+                    logger.error(msg)
+                else:
+                    msg = "%s lint failures %s" % (len(errors), errors)
+                    print(msg)
+                    pipeline_run.put_job_success("Successfully linted: %s" % successes)
+                    logger.info("Successfully linted: %s" % successes)
         else:
-            pipeline_run.put_job_success("Successfully validated: %s" % successes)
-            logger.info("Successfully validated: %s" % successes)
-    except Exception as e:
+            pipeline_run.put_job_failure("No input artifacts given")
+    except Exception as exception:
         logger.error("unhandled exception!", exc_info=1)
-        pipeline_run.put_job_failure(str(e))
+        pipeline_run.put_job_failure(str(exception))
