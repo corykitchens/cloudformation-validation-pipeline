@@ -1,7 +1,7 @@
 from awsclients import AwsClients
 import botocore
 from cfnpipeline import CFNPipeline
-from cStringIO import StringIO
+from io import StringIO
 from datetime import datetime
 import json
 from logger import Logger
