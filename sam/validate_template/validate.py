@@ -44,38 +44,38 @@ def validate_template(name, template):
 
 def lambda_handler(event, context):
     return "Inside handler"
-    # try:
-    #     logger.config(context.aws_request_id)
-    #     logger.debug("Handler starting...")
-    #     logger.debug(event)
-    #     pipeline_run.consume_event(event, context, loglevel=loglevel)
-    #     logger.info({'event': 'new_invoke'})
-    #     errors = []
-    #     successes = []
-    #     input_artifacts = event['CodePipeline.job']['data']['inputArtifacts']
-    #     if len(input_artifacts):
-    #         location = input_artifacts[0]['location']
-    #         if location['type'] == 'S3':
-    #             bucket_name = location['s3Location']['bucketName']
-    #             obj_key = location['s3Location']['objectKey']
-    #             for name, template in get_templates(bucket_name, obj_key):
-    #                 validate_failed = validate_template(name, template)
-    #                 if validate_failed:
-    #                   errors.append([name, template, validate_failed])
-    #                 else:
-    #                   successes.append('%s/%s' % (template, name))
-    #             if len(errors) > 0:
-    #                 msg = "%s lint failures %s" % (len(errors), errors)
-    #                 print(msg)
-    #                 pipeline_run.put_job_failure(msg)
-    #                 logger.error(msg)
-    #             else:
-    #                 msg = "%s lint failures %s" % (len(errors), errors)
-    #                 print(msg)
-    #                 pipeline_run.put_job_success("Successfully linted: %s" % successes)
-    #                 logger.info("Successfully linted: %s" % successes)
-    #     else:
-    #         pipeline_run.put_job_failure("No input artifacts given")
-    # except Exception as exception:
-    #     logger.error("unhandled exception!", exc_info=1)
+    try:
+        logger.config(context.aws_request_id)
+        logger.debug("Handler starting...")
+        logger.debug(event)
+        pipeline_run.consume_event(event, context, loglevel=loglevel)
+        logger.info({'event': 'new_invoke'})
+        errors = []
+        successes = []
+        input_artifacts = event['CodePipeline.job']['data']['inputArtifacts']
+        if len(input_artifacts):
+            location = input_artifacts[0]['location']
+            if location['type'] == 'S3':
+                bucket_name = location['s3Location']['bucketName']
+                obj_key = location['s3Location']['objectKey']
+                for name, template in get_templates(bucket_name, obj_key):
+                    validate_failed = validate_template(name, template)
+                    if validate_failed:
+                      errors.append([name, template, validate_failed])
+                    else:
+                      successes.append('%s/%s' % (template, name))
+                if len(errors) > 0:
+                    msg = "%s lint failures %s" % (len(errors), errors)
+                    print(msg)
+                    pipeline_run.put_job_failure(msg)
+                    logger.error(msg)
+                else:
+                    msg = "%s lint failures %s" % (len(errors), errors)
+                    print(msg)
+                    pipeline_run.put_job_success("Successfully linted: %s" % successes)
+                    logger.info("Successfully linted: %s" % successes)
+        else:
+            pipeline_run.put_job_failure("No input artifacts given")
+    except Exception as exception:
+        logger.error("unhandled exception!", exc_info=1)
         pipeline_run.put_job_failure(str(exception))
